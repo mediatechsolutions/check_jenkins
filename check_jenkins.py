@@ -48,7 +48,7 @@ class Jenkins(object):
                 offline_nodes += 1
 
             data.append(output)
-            # label=value;warn;crit;min;max
+            # |label=value;warn;crit;min;max
             perf_data.append('%s=%s;%s;%s;;' % (
                 computer['displayName'],
                 '0' if computer['offline'] else '1', '', ''
@@ -58,7 +58,7 @@ class Jenkins(object):
         summary.append('Offline slaves: %s' %(offline_nodes))
 
         perf_data.insert(0, 
-            ('%s=%s;%s;%s;%s;' % (
+            ('%s=%s;%s;%s;;%s' % (
                 'offline_nodes',
                 offline_nodes,
                 warning if warning != None else '',
@@ -77,7 +77,7 @@ class Jenkins(object):
     def print_output(self, status, summary, data, perf_data):
         output = '%s\n\n%s\n\n%s\n\n' % (status, '\n'.join(summary), '\n'.join(data))
         if self.performance_data:
-            output += '%s' % ('\n'.join(perf_data))
+            output += '|%s' % (' '.join(perf_data))
 
         print(output)
         sys.exit(output_state[status])
