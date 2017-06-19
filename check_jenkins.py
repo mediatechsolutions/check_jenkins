@@ -22,7 +22,10 @@ class Jenkins(object):
 
     def __request(self, url):
         try:
-            return requests.get(url, auth=(self.username, self.password)).text
+            request = requests.get(url, auth=(self.username, self.password))
+            if request.status_code != 200:
+                raise ValueError('Request HTTP code %s' % (request.status_code))
+            return request.text
         except ValueError as error:
             print(error)
             sys.exit(output_state['UNKNOWN'])
