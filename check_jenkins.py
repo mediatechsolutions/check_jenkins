@@ -137,15 +137,7 @@ class Jenkins(object):
             output += '\n\n%s' % '\n'.join(self.data)
         if self.enable_performance_data:
             output += '\n\n|%s' % (' '.join(self.perf_data))
-        '''
-        output = '%s\n\n%s\n\n%s\n\n' % (
-            self.check_status,
-            '\n'.join(self.summary),
-            '\n'.join(self.data)
-        )
-        if self.enable_performance_data:
-            output += '|%s' % (' '.join(self.perf_data))
-        '''
+
         print(output)
         sys.exit(nagios_output_state[self.check_status])
 
