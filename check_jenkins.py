@@ -4,7 +4,7 @@ import json
 import requests
 import sys
 
-output_state = {
+nagios_output_state = {
     'OK': 0,
     'WARNING': 1,
     'CRITICAL': 2,
@@ -14,13 +14,18 @@ output_state = {
 
 class Jenkins(object):
 
-    check_mode = dict()
-
     def __init__(self, args):
         self.host = args.host
         self.username = args.username
         self.password = args.password
-        self.performance_data = args.enable_performance_data
+
+        self.enable_performance_data = args.enable_performance_data
+
+        self.perf_data = list()
+        self.data = list()
+        self.summary = list()
+
+        self.check_status = 'OK'
 
     def __request(self, url):
         try:
@@ -32,19 +37,25 @@ class Jenkins(object):
             return request.text
         except ValueError as error:
             print(error)
-            sys.exit(output_state['UNKNOWN'])
+            sys.exit(nagios_output_state['UNKNOWN'])
 
-    def check(self, mode, warning, critical):
-        return getattr(Jenkins, mode)(self, warning, critical)
+    def check(self, check_mode, warning, critical):
+        try:
+            return getattr(Jenkins, 'check_%s' % check_mode)(
+                self, warning, critical
+            )
+        except ValueError as error:
+            print(error)
+            sys.exit(nagios_output_state['UNKNOWN'])
 
-    def check_nodes(self, warning, critical):
+    def check_node_status(self, warning, critical):
         path = 'computer/api/json'
         url = '%s/%s' % (self.host, path)
         response = json.loads(self.__request(url))
 
-        summary = list()
-        data = list()
-        perf_data = list()
+        warning = int(warning) if warning is not None else ''
+        critical = int(critical) if critical is not None else ''
+
         offline_nodes = 0
 
         for computer in response['computer']:
@@ -59,44 +70,84 @@ class Jenkins(object):
                 )
                 offline_nodes += 1
 
-            data.append(output)
+            self.data.append(output)
             # |label=value;warn;crit;min;max
-            perf_data.append('%s=%s;%s;%s;;' % (
+            self.perf_data.append('%s=%s;%s;%s;;' % (
                 computer['displayName'],
                 '0' if computer['offline'] else '1', '', ''
             ))
 
-        summary.append('Number of slaves: %s' % (len(response['computer'])))
-        summary.append('Offline slaves: %s' % (offline_nodes))
+        self.summary.append(
+            'Number of nodes: %s' % (len(response['computer'])))
+        self.summary.append('Offline nodes: %s' % (offline_nodes))
 
-        perf_data.insert(0, (
+        self.perf_data.insert(0, (
             '%s=%s;%s;%s;;%s' % (
                 'offline_nodes',
                 offline_nodes,
-                warning if warning is not None else '',
-                critical if critical is not None else '',
+                warning,
+                critical,
                 len(response['computer'])
             ))
         )
 
-        if critical is not None and offline_nodes >= int(critical):
-            self.print_output('CRITICAL', summary, data, perf_data)
-        if warning is not None and offline_nodes >= int(warning):
-            self.print_output('WARNING', summary, data, perf_data)
+        self.__set_status(warning, critical, offline_nodes)
+        self.__nagios_output()
 
-        self.print_output('OK', summary, data, perf_data)
+    def check_queue_lenght(self, warning, critical):
+        path = 'queue/api/json'
+        url = '%s/%s' % (self.host, path)
+        response = json.loads(self.__request(url))
 
-    def print_output(self, status, summary, data, perf_data):
+        warning = int(warning) if warning is not None else ''
+        critical = int(critical) if critical is not None else ''
+
+        queue_lenght = len(response['items'])
+
+        self.summary.append('Queue lenght: %s jobs' % (queue_lenght))
+
+        self.perf_data.append('%s=%s;%s;%s;;' % (
+            'queue_lenght',
+            queue_lenght,
+            warning,
+            critical
+        ))
+
+        self.__set_status(warning, critical, queue_lenght)
+        self.__nagios_output()
+
+    def __set_status(self, warning, critical, value_to_check):
+
+        if critical != '' and value_to_check >= critical:
+            self.check_status = 'CRITICAL'
+            return
+
+        if warning != '' and value_to_check >= warning:
+            self.check_status = 'WARNING'
+            return
+
+        self.check_status = 'OK'
+
+    def __nagios_output(self):
+        output = self.check_status
+
+        if self.summary:
+            output += '\n\n%s' % '\n'.join(self.summary)
+        if self.data:
+            output += '\n\n%s' % '\n'.join(self.data)
+        if self.enable_performance_data:
+            output += '\n\n|%s' % (' '.join(self.perf_data))
+        '''
         output = '%s\n\n%s\n\n%s\n\n' % (
-            status,
-            '\n'.join(summary),
-            '\n'.join(data)
+            self.check_status,
+            '\n'.join(self.summary),
+            '\n'.join(self.data)
         )
-        if self.performance_data:
-            output += '|%s' % (' '.join(perf_data))
-
+        if self.enable_performance_data:
+            output += '|%s' % (' '.join(self.perf_data))
+        '''
         print(output)
-        sys.exit(output_state[status])
+        sys.exit(nagios_output_state[self.check_status])
 
 
 if __name__ == "__main__":
@@ -107,17 +158,17 @@ if __name__ == "__main__":
         '--host',
         help='ip or cname of jenkins endpoint',
         type=str,
-        default='localhost'
+        required=True
     )
     parser.add_argument('--username', type=str)
     parser.add_argument('--password', type=str)
 
     parser.add_argument(
-        '--mode',
-        choices=['check_nodes'],
+        '--check-mode',
+        choices=['node_status', 'queue_lenght'],
         help='operation mode',
         type=str,
-        default='search'
+        required=True
     )
 
     parser.add_argument(
@@ -143,4 +194,4 @@ if __name__ == "__main__":
 
     jenkins = Jenkins(args)
 
-    jenkins.check(args.mode, args.warning, args.critical)
+    jenkins.check(args.check_mode, args.warning, args.critical)
