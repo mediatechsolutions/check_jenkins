@@ -73,11 +73,11 @@ class Jenkins(object):
             self.data.append(output)
             # |label=value;warn;crit;min;max
             self.perf_data.append('%s=%s;%s;%s;;' % (
-                computer['displayName'] + '_offline',
+                computer['displayName'] + '.online',
                 '0' if computer['offline'] else '1', '', ''
             ))
             self.perf_data.append('%s=%s;%s;%s;;' % (
-                computer['displayName'] + '_idle',
+                computer['displayName'] + '.running',
                 '0' if computer['idle'] else '1', '', ''
             ))
 
