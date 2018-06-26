@@ -29,3 +29,22 @@ optional arguments:
   -c CRITICAL, --critical CRITICAL
                         number of entries neededed to throw a critical
 ```
+
+```bash
+usage: execute_jenkins_job.py [-h] --jenkins-job JENKINS_JOB
+                              [--job-arguments JOB_ARGUMENTS] [--ignore-ssl]
+                              -u USER -p PASSWORD
+
+Execute jenkins job. Return OK on Success, WARNING on UNSTABLE and FAIL on
+Failed build
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --jenkins-job JENKINS_JOB
+  --job-arguments JOB_ARGUMENTS
+                        Arguments to set when execute jenkins job. Written as
+                        key=value csv
+  --ignore-ssl
+  -u USER, --user USER
+  -p PASSWORD, --password PASSWORD
+```
