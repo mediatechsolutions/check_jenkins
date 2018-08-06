@@ -135,6 +135,7 @@ def get_args():
     parser.add_argument(
         '--timeout',
         default=900,
+        type=int,
         help="In delayed mode, seconds to consider the last build result"
     )
 
