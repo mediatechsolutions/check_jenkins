@@ -147,7 +147,6 @@ class Nagios(object):
         def format_prop(key, value):
             return '%s=%s;%s;%s;%s;%s ' % (key, value, '', '', '', '')
         props = ''
-        print(result)
         props += format_prop("duration", result.get('duration')/1000. if result.get('duration') is not None else iNone)
         props += format_prop("success", 1 if result.get('result') == 'SUCCESS' else 0)
         print('%s\n\n|%s' % (preface, props))
