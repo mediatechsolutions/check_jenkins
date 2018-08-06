@@ -144,9 +144,12 @@ def get_args():
 
 class Nagios(object):
     def show(self, preface, result, show_performance):
+        def format_prop(key, value):
+            return '%s=%s;%s;%s;%s;%s ' % (key, value, '', '', '', '')
         props = ''
-        for item in ('duration', ):
-            props += '%s=;%s;%s;%s;%s ' % (item, result.get(item, ''), '', '', '')
+        print(result)
+        props += format_prop("duration", result.get('duration')/1000. if result.get('duration') is not None else iNone)
+        props += format_prop("success", 1 if result.get('result') == 'SUCCESS' else 0)
         print('%s\n\n|%s' % (preface, props))
         sys.exit(0 if result.get('result') == 'SUCCESS' else 2)
         
