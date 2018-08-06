@@ -39,15 +39,6 @@ class Jenkins(object):
             print(error)
             sys.exit(nagios_output_state['UNKNOWN'])
 
-    def check(self, check_mode, warning, critical):
-        try:
-            return getattr(Jenkins, 'check_%s' % check_mode)(
-                self, warning, critical
-            )
-        except ValueError as error:
-            print(error)
-            sys.exit(nagios_output_state['UNKNOWN'])
-
     def check_node_status(self, warning, critical):
         path = 'computer/api/json'
         url = '%s/%s' % (self.host, path)
@@ -96,9 +87,8 @@ class Jenkins(object):
         )
 
         self.__set_status(warning, critical, offline_nodes)
-        self.__nagios_output()
 
-    def check_queue_lenght(self, warning, critical):
+    def check_queue_length(self, warning, critical):
         path = 'queue/api/json'
         url = '%s/%s' % (self.host, path)
         response = json.loads(self.__request(url))
@@ -106,19 +96,18 @@ class Jenkins(object):
         warning = int(warning) if warning is not None else ''
         critical = int(critical) if critical is not None else ''
 
-        queue_lenght = len(response['items'])
+        queue_length = len(response['items'])
 
-        self.summary.append('Queue lenght: %s jobs' % (queue_lenght))
+        self.summary.append('Queue length: %s jobs' % (queue_length))
 
         self.perf_data.append('%s=%s;%s;%s;;' % (
-            'queue_lenght',
-            queue_lenght,
+            'queue_length',
+            queue_length,
             warning,
             critical
         ))
 
-        self.__set_status(warning, critical, queue_lenght)
-        self.__nagios_output()
+        self.__set_status(warning, critical, queue_length)
 
     def __set_status(self, warning, critical, value_to_check):
 
@@ -132,21 +121,23 @@ class Jenkins(object):
 
         self.check_status = 'OK'
 
-    def __nagios_output(self):
-        output = self.check_status
 
-        if self.summary:
-            output += '\n\n%s' % '\n'.join(self.summary)
-        if self.data:
-            output += '\n\n%s' % '\n'.join(self.data)
-        if self.enable_performance_data:
-            output += '\n\n|%s' % (' '.join(self.perf_data))
+class Nagios(object):
+    def show(self, jenkins, show_performance):
+        output = jenkins.check_status
+
+        if jenkins.summary:
+            output += '\n\n%s' % '\n'.join(jenkins.summary)
+        if jenkins.data:
+            output += '\n\n%s' % '\n'.join(jenkins.data)
+        if show_performance:
+            output += '\n\n|%s' % (' '.join(jenkins.perf_data))
 
         print(output)
-        sys.exit(nagios_output_state[self.check_status])
+        sys.exit(nagios_output_state[jenkins.check_status])
+        
 
-
-if __name__ == "__main__":
+def get_args():
     parser = argparse.ArgumentParser(
         description='Return result of a chek to jenkins with nagios format')
 
@@ -156,12 +147,12 @@ if __name__ == "__main__":
         type=str,
         required=True
     )
-    parser.add_argument('--username', type=str)
-    parser.add_argument('--password', type=str)
+    parser.add_argument('-u', '--username', type=str)
+    parser.add_argument('-p', '--password', type=str)
 
     parser.add_argument(
         '--check-mode',
-        choices=['node_status', 'queue_lenght'],
+        choices=['node_status', 'queue_lenght', 'queue_length'],
         help='operation mode',
         type=str,
         required=True
@@ -185,9 +176,23 @@ if __name__ == "__main__":
         type=str,
         default=None
     )
+    parser.add_argument(
+        '-d', '--delayed',
+        help='Do not wait for response, just answer the last status',
+        type=str,
+        default=None
+    )
 
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = get_args()
 
     jenkins = Jenkins(args)
 
-    jenkins.check(args.check_mode, args.warning, args.critical)
+    if args.check_mode == 'node_status':
+        jenkins.check_node_status(args.warning, args.critical)
+    elif args.check_mode in ('queue_length', 'queue_lenght'):
+        jenkins.check_queue_length(args.warning, args.critical)
+    Nagios().show(jenkins, args.enable_performance_data) 

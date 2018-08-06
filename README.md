@@ -1,4 +1,4 @@
-# Chek Jenkins
+# Check Jenkins
 
 This repository contains some jenkins checks in nagios
 

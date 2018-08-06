@@ -5,6 +5,8 @@ import requests
 import time
 from urllib.parse import urlparse
 import sys
+import uuid
+import traceback
 
 
 nagios_output_state = {
@@ -52,12 +54,16 @@ class Jenkins(object):
 
     def __parse_arguments(self, arguments):
         params = dict()
-        for arg in arguments.split(','):
-            key, value = arg.split('=')
-            params[key] = value
+        if arguments:
+            for arg in arguments.split(','):
+                key, value = arg.split('=')
+                params[key] = value
         return params
+
     def execute_job(self, url, arguments):
         params = self.__parse_arguments(arguments)
+        if 'TASKID' not in params:
+            params['TASKID'] = uuid.uuid4().hex
         response = self.request('%s/buildWithParameters' % url, params=params)
         return self.__get_job_url(url, arguments)
 
@@ -66,17 +72,28 @@ class Jenkins(object):
         return response.json()['lastBuild']['url']
 
     def check_job_result(self, url):
-        result = None
-        while not result:
-            response = self.request('%s/api/json' % url)
-            result = response.json()['result']
-            if result:
-                break
+        while True:
+            response = self.request('%s/api/json?tree=timestamp,result,number,duration,url' % url)
+            response.raise_for_status()
+            result = response.json()
+            if result['result']:
+                return result 
             print("Waiting for result")
             time.sleep(10)
-        return result
 
-if __name__ == "__main__":
+    def get_last_completed_build(self, url, timeout):
+        response = self.request(
+            '%s/api/json?tree=lastCompletedBuild[timestamp,result,number,duration,url]'
+            % url
+        )
+        response.raise_for_status()
+        result = response.json()['lastCompletedBuild']
+        timestamp = result.get('timestamp', 0) / 1000.
+        print("%s + %s > %s  -> %s" % (timestamp, timeout, time.time(), timestamp + timeout - time.time()))
+        return {'result': 'TIMEOUT'} if timestamp + timeout < time.time() else result
+
+
+def get_args():
     parser = argparse.ArgumentParser(
         description='Execute jenkins job. Return OK on Success, WARNING on UNSTABLE and FAIL on Failed build')
 
@@ -84,6 +101,12 @@ if __name__ == "__main__":
         '--jenkins-job',
         type=str,
         required=True
+    )
+    parser.add_argument(
+        '--enable-performance-data',
+        help='enable output performance data',
+        action='store_true',
+        default=False
     )
     parser.add_argument(
         '--job-arguments',
@@ -106,19 +129,53 @@ if __name__ == "__main__":
         type=str,
         required=True
     )
+    parser.add_argument(
+        '-d','--delayed',
+        action="store_true"
+    )
+    parser.add_argument(
+        '--timeout',
+        default=300,
+        help="In delayed mode, seconds to consider the last build result"
+    )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    print('Executing job %s with arguments %s\n' % (args.jenkins_job, args.job_arguments))
 
-    jenkins = Jenkins(args.user, args.password, args.ignore_ssl)
-    job_uri = jenkins.execute_job(args.jenkins_job, args.job_arguments)
+class Nagios(object):
+    def show(self, preface, result, show_performance):
+        props = ''
+        for item in ('duration', ):
+            props += '%s=;%s;%s;%s;%s ' % (item, result.get(item, ''), '', '', '')
+        print('%s\n\n|%s' % (preface, props))
+        sys.exit(0 if result.get('result') == 'SUCCESS' else 2)
+        
 
-    print('Executing job %s\n' % job_uri)
-    job_result = jenkins.check_job_result(job_uri)
+if __name__ == "__main__":
+    args = get_args()
+    job_result = {}
+    message = 'FAILURE: unknown'
 
-    print('\nFinished: %s' % job_result)
-    if (job_result == 'SUCCESS'):
-        sys.exit(0)
-    else:
-        sys.exit(2)
+    try:
+        jenkins = Jenkins(args.user, args.password, args.ignore_ssl)
+        job_uri = jenkins.execute_job(args.jenkins_job, args.job_arguments)
+        job_result = (
+            jenkins.get_last_completed_build(args.jenkins_job, args.timeout)
+            if args.delayed
+            else jenkins.check_job_result(job_uri)
+        )
+        pattern = (
+            "OK\n\nJob {job} build {build} was successful" 
+            if job_result.get('result') == 'SUCCESS' 
+            else "FAIL\n\nJob {job} failed on build {build} with error {result} "
+        )
+        message = pattern.format(
+            job=args.jenkins_job,
+            build=job_result.get('number'),
+            result=job_result.get('result')
+        )
+    except Exception as e:
+        message = "FAILURE\n\nJob %s failed\n\nException: %s\nDetails:\n%s" % (args.jenkins_job, e, traceback.format_stack())
+    finally:
+        Nagios().show(message, job_result, args.enable_performance_data)
+
