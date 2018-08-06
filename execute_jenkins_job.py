@@ -89,7 +89,6 @@ class Jenkins(object):
         response.raise_for_status()
         result = response.json()['lastCompletedBuild']
         timestamp = result.get('timestamp', 0) / 1000.
-        print("%s + %s > %s  -> %s" % (timestamp, timeout, time.time(), timestamp + timeout - time.time()))
         return {'result': 'TIMEOUT'} if timestamp + timeout < time.time() else result
 
 
@@ -135,7 +134,7 @@ def get_args():
     )
     parser.add_argument(
         '--timeout',
-        default=300,
+        default=900,
         help="In delayed mode, seconds to consider the last build result"
     )
 
