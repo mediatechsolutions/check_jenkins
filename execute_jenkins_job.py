@@ -161,11 +161,11 @@ if __name__ == "__main__":
     try:
         jenkins = Jenkins(args.user, args.password, args.ignore_ssl)
         job_uri = jenkins.execute_job(args.jenkins_job, args.job_arguments)
-        job_result = (
-            jenkins.get_last_completed_build(args.jenkins_job, args.timeout)
-            if args.delayed
-            else jenkins.check_job_result(job_uri)
-        )
+        if args.delayed:
+            print("delayed execution. Retrieving last completed build.")
+            job_result = jenkins.get_last_completed_build(args.jenkins_job, args.timeout)
+        else:
+            job_result = jenkins.check_job_result(job_uri)
         pattern = (
             "OK\n\nJob {job} build {build} was successful" 
             if job_result.get('result') == 'SUCCESS' 
